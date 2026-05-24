@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>智能导盲系统 - 云端监控</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/mqtt@5.10.3/dist/mqtt.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#f0f2f5;--card:#fff;--primary:#1677ff;--primary-light:#4096ff;
+  --success:#52c41a;--warning:#faad14;--danger:#ff4d4f;
+  --text:#1d1d1f;--text2:#6b7280;--text3:#9ca3af;
+  --radius:14px;--shadow:0 2px 12px rgba(0,0,0,0.06);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);padding-bottom:env(safe-area-inset-bottom,0)}
+/* Header */
+.header{background:linear-gradient(135deg,#1677ff,#722ed1);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:16px;font-weight:700;letter-spacing:0.5px}
+.conn-badge{display:flex;align-items:center;gap:5px;font-size:11px;background:rgba(255,255,255,0.18);padding:4px 10px;border-radius:20px}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:#ff4d4f;transition:background 0.3s}
+.conn-dot.online{background:#52c41a;box-shadow:0 0 6px rgba(82,196,26,0.5)}
+/* Settings Bar */
+.settings-bar{padding:10px 14px;background:#fff;border-bottom:1px solid #f0f0f0;display:flex;gap:8px;align-items:center;font-size:12px;flex-wrap:wrap}
+.settings-bar input{flex:1;min-width:120px;padding:6px 10px;border:1.5px solid #d9d9d9;border-radius:8px;font-size:12px;outline:none;transition:border 0.2s}
+.settings-bar input:focus{border-color:var(--primary)}
+.settings-bar .btn{padding:6px 14px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s}
+.btn-connect{background:var(--primary);color:#fff}
+.btn-connect:active{transform:scale(0.96);opacity:0.9}
+.btn-disconnect{background:#ff4d4f;color:#fff}
+/* Tabs */
+.tab-bar{display:flex;background:#fff;border-bottom:1px solid #f0f0f0;position:sticky;top:54px;z-index:90}
+.tab-btn{flex:1;padding:10px 0;text-align:center;font-size:13px;font-weight:600;color:var(--text3);border:none;background:none;cursor:pointer;position:relative;transition:color 0.2s}
+.tab-btn.active{color:var(--primary)}
+.tab-btn.active::after{content:'';position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:24px;height:3px;background:var(--primary);border-radius:3px 3px 0 0}
+.tab-panel{display:none;padding:14px}
+.tab-panel.active{display:block}
+/* Sensor Grid */
+.sensor-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.sensor-card{background:var(--card);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);position:relative;overflow:hidden;transition:transform 0.15s}
+.sensor-card:active{transform:scale(0.97)}
+.sensor-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--success);transition:background 0.3s}
+.sensor-card.warning::before{background:var(--warning)}
+.sensor-card.danger::before{background:var(--danger)}
+.card-icon{font-size:20px;margin-bottom:8px}
+.card-label{font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.card-value{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.card-sub{font-size:11px;color:var(--text3);margin-top:3px}
+/* Map */
+#map{height:320px;border-radius:var(--radius);overflow:hidden;margin-bottom:12px}
+.map-info{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.map-info-item{background:var(--card);border-radius:10px;padding:10px 6px;box-shadow:var(--shadow)}
+.map-info-item .label{font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px}
+.map-info-item .value{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+/* Chart */
+.chart-container{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.chart-container h3{font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text2)}
+.chart-box{height:180px;position:relative}
+/* Alert Banner */
+.alert-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:200;padding:12px 40px 12px 16px;background:linear-gradient(135deg,#ff4d4f,#ff7875);color:#fff;font-size:14px;font-weight:700;text-align:center;animation:alertPulse 1.5s ease-in-out infinite;letter-spacing:0.5px}
+@keyframes alertPulse{0%,100%{opacity:1}50%{opacity:0.9}}
+.alert-close{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);border:none;color:#fff;width:26px;height:26px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+/* Alert Log */
+.alert-log{max-height:300px;overflow-y:auto}
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #f5f5f5;font-size:13px}
+.alert-item:last-child{border-bottom:none}
+.alert-time{font-size:11px;color:var(--text3);white-space:nowrap;min-width:55px}
+.alert-msg{flex:1;line-height:1.4}
+.alert-type{display:inline-block;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;margin-right:4px}
+.alert-type.fall{background:#fff1f0;color:#ff4d4f}
+.alert-type.gas{background:#fff7e6;color:#fa8c16}
+.alert-type.hr{background:#fff1f0;color:#ff4d4f}
+.alert-type.env{background:#e6f7ff;color:#1677ff}
+/* Empty State */
+.empty{text-align:center;padding:40px 20px;color:var(--text3)}
+.empty-icon{font-size:40px;margin-bottom:10px}
+.empty-text{font-size:13px}
+/* Device Info */
+.device-info{background:var(--card);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:12px}
+.device-info h3{font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text2)}
+.info-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px}
+.info-row:last-child{border-bottom:none}
+.info-row .key{color:var(--text3)}
+.info-row .val{font-weight:600;font-variant-numeric:tabular-nums}
+/* Responsive */
+@media(min-width:600px){
+  .sensor-grid{grid-template-columns:repeat(3,1fr);gap:14px}
+  .tab-panel{padding:16px 20px}
+  #map{height:400px}
+}
+@media(max-width:350px){
+  .sensor-grid{gap:8px;padding:0}
+  .sensor-card{padding:10px}
+  .card-value{font-size:18px}
+}
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.1);border-radius:4px}
+</style>
+</head>
+<body>
+
+<!-- Alert Banner -->
+<div class="alert-banner" id="alertBanner">
+  <span id="alertBannerText"></span>
+  <button class="alert-close" onclick="dismissAlert()">&times;</button>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <h1>&#128301; 智能导盲 · 云端监控</h1>
+  <div class="conn-badge">
+    <div class="conn-dot" id="connDot"></div>
+    <span id="connText">未连接</span>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="settings-bar">
+  <input id="brokerUrl" type="text" placeholder="Broker 地址 (ws://broker.emqx.io:8083/mqtt)" />
+  <input id="deviceId" type="text" placeholder="设备ID (device01)" style="max-width:120px" />
+  <button class="btn btn-connect" id="btnConnect" onclick="doConnect()">连接</button>
+</div>
+
+<!-- Tabs -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('dashboard',this)">&#128200; 仪表盘</button>
+  <button class="tab-btn" onclick="switchTab('map',this)">&#128506; 地图</button>
+  <button class="tab-btn" onclick="switchTab('trend',this)">&#128200; 趋势</button>
+  <button class="tab-btn" onclick="switchTab('alerts',this)">&#9888; 告警</button>
+</div>
+
+<!-- Tab: Dashboard -->
+<div class="tab-panel active" id="panel-dashboard">
+  <div class="sensor-grid">
+    <div class="sensor-card" id="card-hr">
+      <div class="card-icon">&#10084;&#65039;</div>
+      <div class="card-label">心率</div>
+      <div class="card-value" id="val-hr">--</div>
+      <div class="card-sub" id="sub-hr">BPM</div>
+    </div>
+    <div class="sensor-card" id="card-spo2">
+      <div class="card-icon">&#129658;</div>
+      <div class="card-label">血氧 SpO2</div>
+      <div class="card-value" id="val-spo2">--</div>
+      <div class="card-sub" id="sub-spo2">%</div>
+    </div>
+    <div class="sensor-card" id="card-temp">
+      <div class="card-icon">&#127777;&#65039;</div>
+      <div class="card-label">温度</div>
+      <div class="card-value" id="val-temp">--</div>
+      <div class="card-sub">°C</div>
+    </div>
+    <div class="sensor-card" id="card-humi">
+      <div class="card-icon">&#128167;</div>
+      <div class="card-label">湿度</div>
+      <div class="card-value" id="val-humi">--</div>
+      <div class="card-sub">%</div>
+    </div>
+    <div class="sensor-card" id="card-gas">
+      <div class="card-icon">&#128293;</div>
+      <div class="card-label">烟雾浓度</div>
+      <div class="card-value" id="val-gas">--</div>
+      <div class="card-sub" id="sub-gas">ADC</div>
+    </div>
+    <div class="sensor-card" id="card-presence">
+      <div class="card-icon">&#128101;</div>
+      <div class="card-label">人体感应</div>
+      <div class="card-value" id="val-presence">--</div>
+      <div class="card-sub">LD2410B</div>
+    </div>
+    <div class="sensor-card" id="card-motion">
+      <div class="card-icon">&#127939;</div>
+      <div class="card-label">运动状态</div>
+      <div class="card-value" id="val-motion">--</div>
+      <div class="card-sub" id="sub-motion">MPU6050</div>
+    </div>
+    <div class="sensor-card" id="card-accel">
+      <div class="card-icon">&#9889;</div>
+      <div class="card-label">加速度</div>
+      <div class="card-value" id="val-accel">--</div>
+      <div class="card-sub" id="sub-accel">g</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab: Map -->
+<div class="tab-panel" id="panel-map">
+  <div id="map"></div>
+  <div class="map-info">
+    <div class="map-info-item">
+      <div class="label">纬度</div>
+      <div class="value" id="map-lat">--</div>
+    </div>
+    <div class="map-info-item">
+      <div class="label">经度</div>
+      <div class="value" id="map-lng">--</div>
+    </div>
+    <div class="map-info-item">
+      <div class="label">更新时间</div>
+      <div class="value" id="map-time">--</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tab: Trend -->
+<div class="tab-panel" id="panel-trend">
+  <div class="chart-container">
+    <h3>&#10084;&#65039; 心率 & 血氧</h3>
+    <div class="chart-box"><canvas id="chart-hr"></canvas></div>
+  </div>
+  <div class="chart-container">
+    <h3>&#127777;&#65039; 温度 & 湿度</h3>
+    <div class="chart-box"><canvas id="chart-env"></canvas></div>
+  </div>
+  <div class="chart-container">
+    <h3>&#128293; 烟雾浓度</h3>
+    <div class="chart-box"><canvas id="chart-gas"></canvas></div>
+  </div>
+</div>
+
+<!-- Tab: Alerts -->
+<div class="tab-panel" id="panel-alerts">
+  <div class="device-info" id="deviceInfo">
+    <h3>&#128187; 设备状态</h3>
+    <div class="info-row"><span class="key">连接状态</span><span class="val" id="dev-status">离线</span></div>
+    <div class="info-row"><span class="key">最后通信</span><span class="val" id="dev-lastmsg">--</span></div>
+    <div class="info-row"><span class="key">数据条数</span><span class="val" id="dev-msgcount">0</span></div>
+    <div class="info-row"><span class="key">告警次数</span><span class="val" id="dev-alertcount">0</span></div>
+  </div>
+  <div class="alert-log" id="alertLog">
+    <div class="empty">
+      <div class="empty-icon">&#128276;</div>
+      <div class="empty-text">暂无告警记录</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   全局状态
+   ============================================================ */
+let client = null;
+let deviceId = 'device01';
+let msgCount = 0;
+let alertCount = 0;
+let fallDismissed = false;
+
+// GPS 地图
+let map = null;
+let marker = null;
+let trackLine = null;
+let trackPoints = [];
+
+// 历史数据（最多保留 60 个点）
+const MAX_POINTS = 60;
+const history = { labels:[], hr:[], spo2:[], temp:[], humi:[], gas:[] };
+
+// WGS84 → GCJ02（适配高德/腾讯地图，OpenStreetMap 用 WGS84 即可，但保留以防切换）
+function wgs84ToGcj02(wgLat, wgLon) {
+  if (wgLon < 72.004 || wgLon > 137.8347 || wgLat < 0.8293 || wgLat > 55.8271) return [wgLat, wgLon];
+  var a = 6378245.0, ee = 0.00669342162296594323;
+  var dLat = _transformLat(wgLon - 105.0, wgLat - 35.0);
+  var dLon = _transformLon(wgLon - 105.0, wgLat - 35.0);
+  var radLat = wgLat / 180.0 * Math.PI;
+  var magic = Math.sin(radLat);
+  magic = 1 - ee * magic * magic;
+  var sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI);
+  dLon = (dLon * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI);
+  return [wgLat + dLat, wgLon + dLon];
+}
+function _transformLat(x, y) {
+  var ret = -100.0 + 2.0*x + 3.0*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+  ret += (20.0*Math.sin(6.0*x*Math.PI) + 20.0*Math.sin(2.0*x*Math.PI)) * 2.0/3.0;
+  ret += (20.0*Math.sin(y*Math.PI) + 40.0*Math.sin(y/3.0*Math.PI)) * 2.0/3.0;
+  ret += (160.0*Math.sin(y/12.0*Math.PI) + 320*Math.sin(y*Math.PI/30.0)) * 2.0/3.0;
+  return ret;
+}
+function _transformLon(x, y) {
+  var ret = 300.0 + x + 2.0*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+  ret += (20.0*Math.sin(6.0*x*Math.PI) + 20.0*Math.sin(2.0*x*Math.PI)) * 2.0/3.0;
+  ret += (20.0*Math.sin(x*Math.PI) + 40.0*Math.sin(x/3.0*Math.PI)) * 2.0/3.0;
+  ret += (150.0*Math.sin(x/12.0*Math.PI) + 300*Math.sin(x*Math.PI/30.0)) * 2.0/3.0;
+  return ret;
+}
+
+/* ============================================================
+   Tab 切换
+   ============================================================ */
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'map' && map) setTimeout(function(){ map.invalidateSize(); }, 200);
+}
+
+/* ============================================================
+   地图初始化
+   ============================================================ */
+function initMap() {
+  map = L.map('map', { zoomControl: false }).setView([30.57, 104.07], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+  L.control.zoom({ position: 'topright' }).addTo(map);
+
+  var icon = L.divIcon({
+    className: '',
+    html: '<div style="width:16px;height:16px;background:#1677ff;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(22,119,255,0.4)"></div>',
+    iconSize: [16, 16], iconAnchor: [8, 8]
+  });
+  marker = L.marker([30.57, 104.07], { icon: icon }).addTo(map);
+  trackLine = L.polyline([], { color: '#1677ff', weight: 3, opacity: 0.6 }).addTo(map);
+}
+
+/* ============================================================
+   Chart.js 图表初始化
+   ============================================================ */
+let chartHr, chartEnv, chartGas;
+function timeLabel() {
+  var d = new Date();
+  return d.getHours().toString().padStart(2,'0') + ':' +
+         d.getMinutes().toString().padStart(2,'0') + ':' +
+         d.getSeconds().toString().padStart(2,'0');
+}
+function initCharts() {
+  var commonOpts = {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 300 },
+    scales: {
+      x: { grid:{display:false}, ticks:{font:{size:10}, maxTicksLimit:8} },
+      y: { grid:{color:'rgba(0,0,0,0.04)'}, ticks:{font:{size:10}} }
+    },
+    plugins: { legend:{ labels:{ boxWidth:12, font:{size:11} } } },
+    elements: { point:{radius:0}, line:{tension:0.3} }
+  };
+
+  chartHr = new Chart(document.getElementById('chart-hr'), {
+    type:'line',
+    data:{ labels:[], datasets:[
+      { label:'心率 BPM', data:[], borderColor:'#ff4d4f', backgroundColor:'rgba(255,77,79,0.08)', fill:true },
+      { label:'血氧 %', data:[], borderColor:'#1677ff', backgroundColor:'rgba(22,119,255,0.08)', fill:true }
+    ]},
+    options: commonOpts
+  });
+
+  chartEnv = new Chart(document.getElementById('chart-env'), {
+    type:'line',
+    data:{ labels:[], datasets:[
+      { label:'温度 °C', data:[], borderColor:'#fa8c16', backgroundColor:'rgba(250,140,22,0.08)', fill:true },
+      { label:'湿度 %', data:[], borderColor:'#13c2c2', backgroundColor:'rgba(19,194,194,0.08)', fill:true }
+    ]},
+    options: commonOpts
+  });
+
+  chartGas = new Chart(document.getElementById('chart-gas'), {
+    type:'line',
+    data:{ labels:[], datasets:[
+      { label:'烟雾 ADC', data:[], borderColor:'#faad14', backgroundColor:'rgba(250,173,20,0.08)', fill:true }
+    ]},
+    options: commonOpts
+  });
+}
+
+function pushHistory(label, hr, spo2, temp, humi, gas) {
+  history.labels.push(label);
+  history.hr.push(hr); history.spo2.push(spo2);
+  history.temp.push(temp); history.humi.push(humi);
+  history.gas.push(gas);
+  if (history.labels.length > MAX_POINTS) {
+    history.labels.shift(); history.hr.shift(); history.spo2.shift();
+    history.temp.shift(); history.humi.shift(); history.gas.shift();
+  }
+  chartHr.data.labels = history.labels;
+  chartHr.data.datasets[0].data = history.hr;
+  chartHr.data.datasets[1].data = history.spo2;
+  chartHr.update('none');
+
+  chartEnv.data.labels = history.labels;
+  chartEnv.data.datasets[0].data = history.temp;
+  chartEnv.data.datasets[1].data = history.humi;
+  chartEnv.update('none');
+
+  chartGas.data.labels = history.labels;
+  chartGas.data.datasets[0].data = history.gas;
+  chartGas.update('none');
+}
+
+/* ============================================================
+   卡片颜色 & 状态更新
+   ============================================================ */
+function setCardState(cardId, level) {
+  var card = document.getElementById(cardId);
+  if (!card) return;
+  card.classList.remove('warning', 'danger');
+  if (level === 'warning') card.classList.add('warning');
+  if (level === 'danger') card.classList.add('danger');
+}
+function setColor(elId, color) {
+  var el = document.getElementById(elId);
+  if (el) el.style.color = color;
+}
+
+/* ============================================================
+   告警系统
+   ============================================================ */
+function showAlert(type, message) {
+  // 顶部横幅
+  var banner = document.getElementById('alertBanner');
+  document.getElementById('alertBannerText').innerHTML = '&#9888; ' + message;
+  banner.style.display = 'block';
+
+  // 告警日志
+  alertCount++;
+  document.getElementById('dev-alertcount').textContent = alertCount;
+  var log = document.getElementById('alertLog');
+  // 移除空状态
+  var empty = log.querySelector('.empty');
+  if (empty) empty.remove();
+
+  var item = document.createElement('div');
+  item.className = 'alert-item';
+  var typeClass = type === 'fall' ? 'fall' : type === 'gas' ? 'gas' : type === 'hr' ? 'hr' : 'env';
+  var typeLabel = type === 'fall' ? '跌倒' : type === 'gas' ? '烟雾' : type === 'hr' ? '心率' : '环境';
+  item.innerHTML =
+    '<span class="alert-time">' + timeLabel() + '</span>' +
+    '<span class="alert-msg"><span class="alert-type ' + typeClass + '">' + typeLabel + '</span>' + message + '</span>';
+  log.insertBefore(item, log.firstChild);
+}
+function dismissAlert() {
+  document.getElementById('alertBanner').style.display = 'none';
+  fallDismissed = true;
+}
+
+/* ============================================================
+   MQTT 连接 & 消息处理
+   ============================================================ */
+function doConnect() {
+  var url = document.getElementById('brokerUrl').value.trim();
+  deviceId = document.getElementById('deviceId').value.trim() || 'device01';
+
+  if (!url) {
+    url = 'ws://broker.emqx.io:8083/mqtt';
+    document.getElementById('brokerUrl').value = url;
+  }
+
+  if (client) {
+    client.end(true);
+    client = null;
+  }
+
+  document.getElementById('connText').textContent = '连接中...';
+  document.getElementById('btnConnect').textContent = '断开';
+  document.getElementById('btnConnect').className = 'btn btn-disconnect';
+  document.getElementById('btnConnect').onclick = doDisconnect;
+
+  client = mqtt.connect(url, {
+    clientId: 'web_' + Math.random().toString(36).substr(2, 8),
+    clean: true,
+    connectTimeout: 8000,
+    reconnectPeriod: 3000,
+    keepalive: 30
+  });
+
+  client.on('connect', function() {
+    document.getElementById('connDot').classList.add('online');
+    document.getElementById('connText').textContent = '已连接';
+    document.getElementById('dev-status').textContent = '在线';
+    setColor('dev-status', 'var(--success)');
+
+    // 订阅所有传感器主题
+    var prefix = deviceId + '/';
+    client.subscribe([
+      prefix + 'sensor/hr',
+      prefix + 'sensor/env',
+      prefix + 'sensor/gas',
+      prefix + 'sensor/gps',
+      prefix + 'sensor/mpu6050',
+      prefix + 'sensor/ld2410b',
+      prefix + 'alert'
+    ], function(err) {
+      if (err) console.error('Subscribe failed:', err);
+    });
+  });
+
+  client.on('message', function(topic, payload) {
+    try {
+      var data = JSON.parse(payload.toString());
+      msgCount++;
+      document.getElementById('dev-msgcount').textContent = msgCount;
+      document.getElementById('dev-lastmsg').textContent = timeLabel();
+      handleMessage(topic, data);
+    } catch(e) {
+      console.warn('Parse error:', topic, e);
+    }
+  });
+
+  client.on('error', function(err) {
+    console.error('MQTT Error:', err);
+    document.getElementById('connText').textContent = '错误';
+  });
+
+  client.on('close', function() {
+    document.getElementById('connDot').classList.remove('online');
+    document.getElementById('connText').textContent = '已断开';
+    document.getElementById('dev-status').textContent = '离线';
+    setColor('dev-status', 'var(--danger)');
+  });
+}
+
+function doDisconnect() {
+  if (client) { client.end(true); client = null; }
+  document.getElementById('btnConnect').textContent = '连接';
+  document.getElementById('btnConnect').className = 'btn btn-connect';
+  document.getElementById('btnConnect').onclick = doConnect;
+}
+
+/* 消息路由 */
+function handleMessage(topic, d) {
+  var t = topic.split('/').pop();
+
+  switch(t) {
+    case 'hr':      handleHr(d); break;
+    case 'env':     handleEnv(d); break;
+    case 'gas':     handleGas(d); break;
+    case 'gps':     handleGps(d); break;
+    case 'mpu6050': handleMpu(d); break;
+    case 'ld2410b': handlePresence(d); break;
+    case 'alert':   handleAlertMsg(d); break;
+  }
+
+  // 推送趋势数据（取最新的各项值推一次）
+  pushHistory(timeLabel(),
+    parseFloat(document.getElementById('val-hr').textContent) || null,
+    parseFloat(document.getElementById('val-spo2').textContent) || null,
+    parseFloat(document.getElementById('val-temp').textContent) || null,
+    parseFloat(document.getElementById('val-humi').textContent) || null,
+    parseFloat(document.getElementById('val-gas').textContent) || null
+  );
+}
+
+/* 心率 */
+function handleHr(d) {
+  var hr = d.heart_rate, spo2 = d.spO2, finger = d.finger_detected;
+
+  if (finger) {
+    document.getElementById('val-hr').textContent = hr;
+    document.getElementById('sub-hr').textContent = 'BPM · 有手指';
+    var hrOk = hr >= 50 && hr <= 120;
+    var hrLevel = hrOk ? '' : (hr < 40 || hr > 140 ? 'danger' : 'warning');
+    setCardState('card-hr', hrLevel);
+    setColor('val-hr', hrOk ? 'var(--text)' : (hrLevel === 'danger' ? 'var(--danger)' : 'var(--warning)'));
+
+    document.getElementById('val-spo2').textContent = spo2;
+    document.getElementById('sub-spo2').textContent = '% · 有效';
+    var spOk = spo2 >= 95;
+    var spLevel = spOk ? '' : (spo2 < 90 ? 'danger' : 'warning');
+    setCardState('card-spo2', spLevel);
+    setColor('val-spo2', spOk ? 'var(--text)' : (spLevel === 'danger' ? 'var(--danger)' : 'var(--warning)'));
+
+    // 心率异常告警
+    if (hr < 40 || hr > 140) showAlert('hr', '心率异常: ' + hr + ' BPM');
+    if (spo2 < 90) showAlert('hr', '血氧过低: ' + spo2 + '%');
+  } else {
+    document.getElementById('val-hr').textContent = '--';
+    document.getElementById('sub-hr').textContent = '未检测到手指';
+    document.getElementById('val-spo2').textContent = '--';
+    document.getElementById('sub-spo2').textContent = '未检测到手指';
+    setCardState('card-hr', '');
+    setCardState('card-spo2', '');
+    setColor('val-hr', 'var(--text3)');
+    setColor('val-spo2', 'var(--text3)');
+  }
+}
+
+/* 温湿度 */
+function handleEnv(d) {
+  var t = d.temperature, h = d.humidity;
+  document.getElementById('val-temp').textContent = t.toFixed(1);
+  document.getElementById('val-humi').textContent = h.toFixed(1);
+
+  var tLevel = (t >= 15 && t <= 30) ? '' : (t > 40 || t < 0 ? 'danger' : 'warning');
+  setCardState('card-temp', tLevel);
+  setColor('val-temp', tLevel === 'danger' ? 'var(--danger)' : tLevel === 'warning' ? 'var(--warning)' : 'var(--text)');
+
+  var hLevel = (h >= 30 && h <= 70) ? '' : 'warning';
+  setCardState('card-humi', hLevel);
+  setColor('val-humi', hLevel ? 'var(--warning)' : 'var(--text)');
+
+  if (t > 45) showAlert('env', '温度过高: ' + t.toFixed(1) + '°C');
+}
+
+/* 烟雾 */
+function handleGas(d) {
+  var raw = d.raw_smoke;
+  document.getElementById('val-gas').textContent = raw;
+  var level = raw < 300 ? '' : (raw < 600 ? 'warning' : 'danger');
+  setCardState('card-gas', level);
+  setColor('val-gas', level === 'danger' ? 'var(--danger)' : level === 'warning' ? 'var(--warning)' : 'var(--text)');
+  if (raw >= 600) showAlert('gas', '烟雾浓度过高: ADC=' + raw);
+}
+
+/* GPS */
+function handleGps(d) {
+  if (!d.valid) {
+    document.getElementById('map-lat').textContent = '无效';
+    document.getElementById('map-lng').textContent = '无效';
+    return;
+  }
+  var lat = d.latitude, lng = d.longitude;
+  document.getElementById('map-lat').textContent = lat.toFixed(6);
+  document.getElementById('map-lng').textContent = lng.toFixed(6);
+  document.getElementById('map-time').textContent = timeLabel();
+
+  if (map) {
+    marker.setLatLng([lat, lng]);
+    trackPoints.push([lat, lng]);
+    trackLine.setLatLngs(trackPoints);
+    if (trackPoints.length <= 1) map.setView([lat, lng], 16);
+  }
+}
+
+/* MPU6050 */
+var currentTemp = 0, currentHumi = 0, currentGas = 0;
+function handleMpu(d) {
+  var ax = d.accel_x_g, ay = d.accel_y_g, az = d.accel_z_g;
+  var accelMag = Math.sqrt(ax*ax + ay*ay + az*az);
+  document.getElementById('val-accel').textContent = accelMag.toFixed(2);
+  document.getElementById('sub-accel').textContent = 'X:'+ax.toFixed(2)+' Y:'+ay.toFixed(2)+' Z:'+az.toFixed(2);
+
+  var aLevel = accelMag < 1.2 ? '' : (accelMag < 1.8 ? 'warning' : 'danger');
+  setCardState('card-accel', aLevel);
+  setColor('val-accel', aLevel === 'danger' ? 'var(--danger)' : aLevel === 'warning' ? 'var(--warning)' : 'var(--text)');
+
+  var ms = d.motion_status;
+  var msText = ms === 0 ? '静止' : ms === 1 ? '轻微运动' : '剧烈运动';
+  document.getElementById('val-motion').textContent = msText;
+  document.getElementById('sub-motion').textContent = d.shake_detected ? '检测到晃动!' : 'MPU6050';
+  var mLevel = ms === 0 ? '' : (ms === 1 ? 'warning' : 'danger');
+  setCardState('card-motion', mLevel);
+  setColor('val-motion', mLevel === 'danger' ? 'var(--danger)' : mLevel === 'warning' ? 'var(--warning)' : 'var(--text)');
+
+  // 跌倒检测
+  if (d.shake_detected && ms >= 2 && !fallDismissed) {
+    showAlert('fall', '检测到剧烈晃动 — 可能摔倒!');
+  }
+  if (!d.shake_detected && ms < 2) {
+    document.getElementById('alertBanner').style.display = 'none';
+    fallDismissed = false;
+  }
+}
+
+/* 人体感应 */
+function handlePresence(d) {
+  var p = d.presence_detected;
+  document.getElementById('val-presence').textContent = p ? '有人' : '无人';
+  setCardState('card-presence', '');
+  setColor('val-presence', p ? 'var(--success)' : 'var(--text3)');
+}
+
+/* 设备端主动告警 */
+function handleAlertMsg(d) {
+  showAlert(d.type || 'env', d.message || '收到告警');
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+window.addEventListener('DOMContentLoaded', function() {
+  initMap();
+  initCharts();
+
+  // 默认 Broker 地址
+  document.getElementById('brokerUrl').value = 'ws://broker.emqx.io:8083/mqtt';
+  document.getElementById('deviceId').value = 'device01';
+});
+</script>
+</body>
+</html>
