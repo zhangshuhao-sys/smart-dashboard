@@ -797,20 +797,28 @@ function handleMessage(topic, d) {
 }
 
 function handleHr(d) {
-  if (!d.finger_detected) return; // 没手指就不更新，保持上次的值
-  var th = getThresholds();
-  document.getElementById('val-hr').textContent = d.heart_rate;
-  document.getElementById('sub-hr').textContent = 'BPM · 有手指';
-  var ok = d.heart_rate >= th.hrLow && d.heart_rate <= th.hrHigh;
-  setCardState('card-hr', ok ? '' : (d.heart_rate < th.hrLow-10 || d.heart_rate > th.hrHigh+20 ? 'danger' : 'warning'));
-  setColor('val-hr', ok ? 'var(--text)' : 'var(--danger)');
-  document.getElementById('val-spo2').textContent = d.spO2;
-  document.getElementById('sub-spo2').textContent = '% · 有效';
-  var spOk = d.spO2 >= th.spo2;
-  setCardState('card-spo2', spOk ? '' : (d.spO2 < th.spo2 - 5 ? 'danger' : 'warning'));
-  setColor('val-spo2', spOk ? 'var(--text)' : 'var(--danger)');
-  if (d.heart_rate < th.hrLow || d.heart_rate > th.hrHigh) showAlert('hr', '心率异常: ' + d.heart_rate + ' BPM');
-  if (d.spO2 < th.spo2) showAlert('hr', '血氧过低: ' + d.spO2 + '%');
+  if (d.finger_detected && d.heart_rate_valid) {
+    var th = getThresholds();
+    document.getElementById('val-hr').textContent = d.heart_rate;
+    document.getElementById('sub-hr').textContent = 'BPM · 有手指';
+    var ok = d.heart_rate >= th.hrLow && d.heart_rate <= th.hrHigh;
+    setCardState('card-hr', ok ? '' : (d.heart_rate < th.hrLow-10 || d.heart_rate > th.hrHigh+20 ? 'danger' : 'warning'));
+    setColor('val-hr', ok ? 'var(--text)' : 'var(--danger)');
+    document.getElementById('val-spo2').textContent = d.spO2;
+    document.getElementById('sub-spo2').textContent = '% · 有效';
+    var spOk = d.spO2 >= th.spo2;
+    setCardState('card-spo2', spOk ? '' : (d.spO2 < th.spo2 - 5 ? 'danger' : 'warning'));
+    setColor('val-spo2', spOk ? 'var(--text)' : 'var(--danger)');
+    if (d.heart_rate < th.hrLow || d.heart_rate > th.hrHigh) showAlert('hr', '心率异常: ' + d.heart_rate + ' BPM');
+    if (d.spO2 < th.spo2) showAlert('hr', '血氧过低: ' + d.spO2 + '%');
+  } else {
+    document.getElementById('val-hr').textContent = '--';
+    document.getElementById('sub-hr').textContent = 'BPM';
+    document.getElementById('val-spo2').textContent = '--';
+    document.getElementById('sub-spo2').textContent = '%';
+    setCardState('card-hr',''); setCardState('card-spo2','');
+    setColor('val-hr','var(--text3)'); setColor('val-spo2','var(--text3)');
+  }
 }
 
 function handleEnv(d) {
