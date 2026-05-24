@@ -10,7 +10,7 @@
 
 const mqtt = require('mqtt');
 
-const BROKER_URL = 'ws://broker.emqx.io:8083/mqtt';
+const BROKER_URL = 'wss://broker.emqx.io:8084/mqtt';
 const DEVICE_ID = 'device01';
 const INTERVAL_MS = 2000; // 每 2 秒发一次
 

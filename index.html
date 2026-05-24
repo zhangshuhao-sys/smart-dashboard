@@ -121,7 +121,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 
 <!-- Settings -->
 <div class="settings-bar">
-  <input id="brokerUrl" type="text" placeholder="Broker 地址 (ws://broker.emqx.io:8083/mqtt)" />
+  <input id="brokerUrl" type="text" placeholder="Broker 地址 (wss://broker.emqx.io:8084/mqtt)" />
   <input id="deviceId" type="text" placeholder="设备ID (device01)" style="max-width:120px" />
   <button class="btn btn-connect" id="btnConnect" onclick="doConnect()">连接</button>
 </div>
@@ -447,7 +447,7 @@ function doConnect() {
   deviceId = document.getElementById('deviceId').value.trim() || 'device01';
 
   if (!url) {
-    url = 'ws://broker.emqx.io:8083/mqtt';
+    url = 'wss://broker.emqx.io:8084/mqtt';
     document.getElementById('brokerUrl').value = url;
   }
 
@@ -678,7 +678,7 @@ window.addEventListener('DOMContentLoaded', function() {
   initCharts();
 
   // 默认 Broker 地址
-  document.getElementById('brokerUrl').value = 'ws://broker.emqx.io:8083/mqtt';
+  document.getElementById('brokerUrl').value = 'wss://broker.emqx.io:8084/mqtt';
   document.getElementById('deviceId').value = 'device01';
 });
 </script>
