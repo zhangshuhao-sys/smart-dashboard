@@ -50,9 +50,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .nav-item:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.85)}
 .nav-item.active{background:rgba(22,119,255,0.15);color:#fff;border-right:3px solid var(--primary)}
 .nav-item .nav-icon{font-size:18px;width:22px;text-align:center}
-.sidebar-conn{padding:14px 16px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;color:rgba(255,255,255,0.4)}
+.sidebar-conn{padding:10px 16px;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;color:rgba(255,255,255,0.4)}
 .conn-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4d4f;margin-right:6px;vertical-align:middle}
 .conn-dot.online{background:#52c41a;box-shadow:0 0 6px rgba(82,196,26,0.5)}
+.sidebar-logout{display:flex;align-items:center;gap:10px;width:100%;padding:12px 20px;border:none;background:none;color:rgba(255,255,255,0.4);font-size:13px;cursor:pointer;transition:all 0.2s;text-align:left;border-top:1px solid rgba(255,255,255,0.06)}
+.sidebar-logout:hover{color:#ff7875;background:rgba(255,77,79,0.1)}
 
 /* ====== 右侧主内容 ====== */
 .main{margin-left:var(--sidebar-w);flex:1;min-height:100vh;display:flex;flex-direction:column}
@@ -61,9 +63,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 .topbar{background:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:100}
 .topbar h1{font-size:15px;font-weight:700;color:var(--text)}
 .mqtt-bar{display:flex;gap:8px;align-items:center;font-size:12px}
-.mqtt-bar input{padding:6px 10px;border:1.5px solid #d9d9d9;border-radius:8px;font-size:12px;outline:none;transition:border 0.2s;width:280px}
+.mqtt-bar input{padding:6px 10px;border:1.5px solid #d9d9d9;border-radius:8px;font-size:12px;outline:none;transition:border 0.2s;width:160px}
 .mqtt-bar input:focus{border-color:var(--primary)}
-.mqtt-bar .dev-input{width:90px}
 .mqtt-bar .btn{padding:6px 14px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s}
 .btn-connect{background:var(--primary);color:#fff}
 .btn-disconnect{background:#ff4d4f;color:#fff}
@@ -177,6 +178,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   .sidebar-header{padding:12px 0;text-align:center}
   .nav-item{justify-content:center;padding:12px 0}
   .nav-item .nav-icon{margin:0}
+  .sidebar-logout span:not(.nav-icon){display:none}
+  .sidebar-logout{justify-content:center;padding:12px 0}
   .main{margin-left:56px}
   .alert-banner{left:56px}
   .mqtt-bar input{width:140px}
@@ -249,6 +252,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
   <div class="sidebar-conn">
     <span class="conn-dot" id="connDot"></span><span id="connText">未连接</span>
   </div>
+  <button class="sidebar-logout" onclick="doLogout()">
+    <span class="nav-icon" style="font-size:18px;width:22px;text-align:center">&#128682;</span><span>退出登录</span>
+  </button>
 </div>
 
 <!-- 右侧主内容 -->
@@ -258,8 +264,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
 <div class="topbar">
   <h1>&#128200; 云端监控</h1>
   <div class="mqtt-bar">
-    <input id="brokerUrl" type="text" placeholder="wss://broker.emqx.io:8084/mqtt" />
-    <input id="deviceId" type="text" placeholder="设备ID" class="dev-input" />
+    <input id="deviceId" type="text" placeholder="请输入设备ID" />
     <button class="btn btn-connect" id="btnConnect" onclick="doConnect()">连接</button>
   </div>
 </div>
@@ -320,11 +325,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Micr
     <div class="dash-section">
       <h3>&#128506; 实时位置</h3>
       <div class="loc-info">
+        <div class="row"><span class="lbl">位置</span><span class="val" id="loc-name">--</span></div>
         <div class="row"><span class="lbl">纬度</span><span class="val" id="loc-lat">--</span></div>
         <div class="row"><span class="lbl">经度</span><span class="val" id="loc-lng">--</span></div>
         <div class="row"><span class="lbl">时间</span><span class="val" id="loc-time">--</span></div>
         <div class="row"><span class="lbl">运动</span><span class="val" id="loc-motion">--</span></div>
-        <div class="row"><span class="lbl">状态</span><span class="val" id="loc-status">--</span></div>
       </div>
     </div>
 
@@ -714,9 +719,9 @@ function dismissAlert() {
    MQTT
    ================================================================ */
 function doConnect() {
-  var url = document.getElementById('brokerUrl').value.trim();
-  deviceId = document.getElementById('deviceId').value.trim() || 'device01';
-  if (!url) { url = 'wss://broker.emqx.io:8084/mqtt'; document.getElementById('brokerUrl').value = url; }
+  var url = 'wss://broker.emqx.io:8084/mqtt';
+  deviceId = document.getElementById('deviceId').value.trim();
+  if (!deviceId) { alert('请输入设备ID'); return; }
   if (client) { client.end(true); client = null; }
 
   document.getElementById('connText').textContent = '连接中...';
@@ -834,6 +839,22 @@ function handleGas(d) {
   if (d.raw_smoke >= th.gas) showAlert('gas', '烟雾浓度过高: ADC=' + d.raw_smoke);
 }
 
+/* 根据经纬度粗略返回位置名称 */
+function getLocName(lat, lng) {
+  if (lat > 29 && lat < 32 && lng > 103 && lng < 105) return '中国 四川 成都';
+  if (lat > 39 && lat < 41 && lng > 115 && lng < 118) return '中国 北京';
+  if (lat > 30 && lat < 32 && lng > 120 && lng < 123) return '中国 上海';
+  if (lat > 22 && lat < 24 && lng > 113 && lng < 115) return '中国 广东 广州';
+  if (lat > 22 && lat < 23 && lng > 113 && lng < 115) return '中国 广东 深圳';
+  if (lat > 30 && lat < 31 && lng > 119 && lng < 121) return '中国 浙江 杭州';
+  if (lat > 33 && lat < 35 && lng > 108 && lng < 110) return '中国 陕西 西安';
+  if (lat > 29 && lat < 31 && lng > 106 && lng < 107) return '中国 重庆';
+  if (lat > 30 && lat < 32 && lng > 114 && lng < 115) return '中国 湖北 武汉';
+  if (lat > 34 && lat < 35 && lng > 113 && lng < 114) return '中国 河南 郑州';
+  if (lat > 25 && lat < 27 && lng > 102 && lng < 104) return '中国 云南 昆明';
+  return '中国 (' + lat.toFixed(2) + '°, ' + lng.toFixed(2) + '°)';
+}
+
 function handleGps(d) {
   if (!d.valid) return;
   trackPoints.push([d.latitude, d.longitude]);
@@ -842,6 +863,7 @@ function handleGps(d) {
   if (fullMap && trackPoints.length <= 1) fullMap.setView([d.latitude, d.longitude], 16);
 
   // 更新仪表盘位置文字
+  document.getElementById('loc-name').textContent = getLocName(d.latitude, d.longitude);
   document.getElementById('loc-lat').textContent = d.latitude.toFixed(6);
   document.getElementById('loc-lng').textContent = d.longitude.toFixed(6);
   document.getElementById('loc-time').textContent = timeLabel();
@@ -866,8 +888,7 @@ function handleMpu(d) {
   setColor('val-motion', ml==='danger'?'var(--danger)':ml==='warning'?'var(--warning)':'var(--text)');
 
   // 更新位置区的运动状态
-  document.getElementById('loc-motion').textContent = msText;
-  document.getElementById('loc-status').textContent = d.shake_detected ? '晃动!' : (ms===0?'平稳':'运动中');
+  document.getElementById('loc-motion').textContent = msText + (d.shake_detected ? ' (晃动!)' : '');
 
   if (d.shake_detected && ms>=2 && !fallDismissed) showAlert('fall', '检测到剧烈晃动 — 可能摔倒!');
   if (!d.shake_detected && ms<2) { document.getElementById('alertBanner').style.display='none'; fallDismissed=false; }
