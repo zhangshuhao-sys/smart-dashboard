@@ -472,6 +472,8 @@ let alertCount = 0;
 let fallDismissed = false;
 let trackVisible = true;
 let satelliteMode = false;
+const lastUpdate = { hr:0, env:0, gas:0, gps:0, mpu6050:0, ld2410b:0 };
+const STALE_MS = 5000;
 
 const MAX_HISTORY = 500;
 const sensorHistory = { labels:[], hr:[], spo2:[], temp:[], humi:[], gas:[] };
@@ -776,6 +778,7 @@ function doDisconnect() {
    ================================================================ */
 function handleMessage(topic, d) {
   var t = topic.split('/').pop();
+  lastUpdate[t] = Date.now();
   switch(t) {
     case 'hr': handleHr(d); break;
     case 'env': handleEnv(d); break;
@@ -903,6 +906,37 @@ function handlePresence(d) {
 document.getElementById('loginPass').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') doLogin();
 });
+
+/* 数据过期检测：超过 STALE_MS 没收到新数据就显示 "--" */
+setInterval(function() {
+  var now = Date.now();
+  if (lastUpdate.hr && now - lastUpdate.hr > STALE_MS) {
+    document.getElementById('val-hr').textContent = '--';
+    document.getElementById('sub-hr').textContent = 'BPM';
+    document.getElementById('val-spo2').textContent = '--';
+    document.getElementById('sub-spo2').textContent = '%';
+    setCardState('card-hr',''); setCardState('card-spo2','');
+    setColor('val-hr','var(--text3)'); setColor('val-spo2','var(--text3)');
+    lastUpdate.hr = 0;
+  }
+  if (lastUpdate.env && now - lastUpdate.env > STALE_MS) {
+    document.getElementById('val-temp').textContent = '--';
+    document.getElementById('val-humi').textContent = '--';
+    setCardState('card-temp',''); setCardState('card-humi','');
+    setColor('val-temp','var(--text3)'); setColor('val-humi','var(--text3)');
+    lastUpdate.env = 0;
+  }
+  if (lastUpdate.gas && now - lastUpdate.gas > STALE_MS) {
+    document.getElementById('val-gas').textContent = '--';
+    setCardState('card-gas',''); setColor('val-gas','var(--text3)');
+    lastUpdate.gas = 0;
+  }
+  if (lastUpdate.ld2410b && now - lastUpdate.ld2410b > STALE_MS) {
+    document.getElementById('val-presence').textContent = '--';
+    setCardState('card-presence',''); setColor('val-presence','var(--text3)');
+    lastUpdate.ld2410b = 0;
+  }
+}, 1000);
 </script>
 </body>
 </html>
